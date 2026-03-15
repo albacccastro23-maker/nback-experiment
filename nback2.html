@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>N-back 2-back</title>
+  <script src="https://cdn.jsdelivr.net/npm/jspsych@7.3.0/jspsych.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspsych@7.3.0/plugins/jspsych-html-keyboard-response.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/jspsych@7.3.0/css/jspsych.css" rel="stylesheet">
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; }
+    h1 { font-size: 80px; }
+  </style>
+</head>
+<body></body>
+
+<script>
+const jsPsych = initJsPsych({
+    on_finish: function() {
+        // Mostrar resultados en pantalla
+        jsPsych.data.displayData();
+        // Guardar CSV automáticamente
+        jsPsych.data.get().localSave('csv', 'nback_results.csv');
+    }
+});
+
+// --- Configuración ---
+const letras = ['A','B','C','D','E','F','G','H','I','J'];
+const n_back = 2;
+const n_trials_practice = 10;  // Bloque de práctica
+const n_trials_real = 25;      // Bloques reales
+
+// --- Función para generar secuencia ---
+function generarSecuencia(n) {
+    let secuencia = [];
+    for (let i = 0; i < n; i++){
+        secuencia.push(letras[Math.floor(Math.random()*letras.length)]);
+    }
+    return secuencia;
+}
+
+// --- Crear trials de N-back ---
+function crearTrials(secuencia) {
+    let trials = [];
+    for (let i = 0; i < secuencia.length; i++){
+        trials.push({
+            type: jsPsychHtmlKeyboardResponse,
+            stimulus: `<h1>${secuencia[i]}</h1>`,
+            choices: [" "], // barra espaciadora
+            trial_duration: 500,
+            on_finish: function(data){
+                if(i >= n_back){
+                    const isMatch = secuencia[i] === secuencia[i-n_back];
+                    const pressed = data.response === " ";
+                    data.correct = (isMatch && pressed) || (!isMatch && !pressed);
+                    data.match = isMatch ? 1 : 0;
+                    data.miss = (isMatch && !pressed) ? 1 : 0;
+                    data.false_alarm = (!isMatch && pressed) ? 1 : 0;
+                } else {
+                    data.correct = null;
+                    data.match = null;
+                    data.miss = null;
+                    data.false_alarm = null;
+                }
+            }
+        });
+    }
+    return trials;
+}
+
+// --- Feedback ---
+function crearFeedback(blockLabel) {
+    return {
+        type: jsPsychHtmlKeyboardResponse,
+        stimulus: function(){
+            const lastBlock = jsPsych.data.get().filter({block: blockLabel});
+            const total2back = lastBlock.filter({match: 1}).count();
+            const matches = lastBlock.filter({match:1, correct:true}).count();
+            const misses = lastBlock.filter({miss:1}).count();
+            const falseAlarms = lastBlock.filter({false_alarm:1}).count();
+            const matchPerc = total2back > 0 ? (matches/total2back*100).toFixed(1) : 0;
+            const missPerc = total2back > 0 ? (misses/total2back*100).toFixed(1) : 0;
+            const falsePerc = (matches + misses + falseAlarms > 0) ? (falseAlarms/(matches+misses+falseAlarms)*100).toFixed(1) : 0;
+
+            return `<p>Bloque: ${blockLabel}</p>
+                    <p>Total de 2-back: ${total2back}</p>
+                    <p>Coincidencias correctas: ${matches} (${matchPerc}%)</p>
+                    <p>Omisiones: ${misses} (${missPerc}%)</p>
+                    <p>Falsas alarmas: ${falseAlarms} (${falsePerc}%)</p>
+                    <p>Presiona cualquier tecla para continuar</p>`;
+        }
+    };
+}
+
+// --- Timeline ---
+let timeline = [];
+
+// Instrucciones
+timeline.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: "<p>Bienvenido a la tarea N-back 2-back.</p>" +
+              "<p>Presiona la barra espaciadora si la letra es igual a la de hace 2 cartas.</p>" +
+              "<p>Presiona cualquier tecla para comenzar.</p>"
+});
+
+// --- Bloque de práctica ---
+let seq_practice = generarSecuencia(n_trials_practice);
+crearTrials(seq_practice).forEach(trial => {
+    trial.data = {block: "practica"};
+    timeline.push(trial);
+});
+timeline.push(crearFeedback("practica"));
+
+// --- Bloques reales ---
+for(let b=1;b<=3;b++){
+    let seq_real = generarSecuencia(n_trials_real);
+    crearTrials(seq_real).forEach(trial => {
+        trial.data = {block: `real${b}`};
+        timeline.push(trial);
+    });
+    timeline.push(crearFeedback(`real${b}`));
+}
+
+// --- Ejecutar ---
+jsPsych.run(timeline);
+
+</script>
+</html>
